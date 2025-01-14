@@ -43,6 +43,3 @@ This repository is distributed under the MIT License. See `LICENSE` for more det
 
 **Maintainer**: Cayetano Soneira  
 For questions or collaborations, please contact: [csoneira@ucm.es](mailto:csoneira@ucm.es)
-```
-
-Let me know if you'd like to customize any part further!
