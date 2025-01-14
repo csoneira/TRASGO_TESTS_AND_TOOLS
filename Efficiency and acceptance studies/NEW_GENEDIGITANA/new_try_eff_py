@@ -1,0 +1,160 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.interpolate import griddata
+from tqdm import tqdm
+import pandas as pd
+from scipy.optimize import curve_fit
+from scipy.stats import poisson
+from datetime import datetime, timedelta
+
+# -----------------------------------------------------------------------------------------------
+# Parameters and Constants ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+Z_POSITIONS = [0, 150, 310, 345.5]  # Detector layer z-positions in mm
+Y_WIDTHS = [np.array([63, 63, 63, 98]), np.array([98, 63, 63, 63])]  # T1-T3 and T2-T4 widths
+DEBUG_FITTING = False
+SHOW_PLOTS = False
+N_TRACKS = 10000
+BIN_WIDTH_X = 5
+BIN_WIDTH_Y = 5
+BIN_WIDTH_THETA = 10 * np.pi / 180
+BIN_WIDTH_PHI = 5 * np.pi / 180
+BASE_TIME = datetime(2024, 1, 1, 12, 0, 0)  # Arbitrary start date and time
+AVG_EVENTS_PER_SECOND = 5  # For Poisson timestamp generation
+
+# -----------------------------------------------------------------------------------------------
+# Step 1: DataFrame Initialization --------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def initialize_dataframe(n_tracks):
+    """Initialize a DataFrame with NaN for all required columns."""
+    columns = ['X_gen', 'Y_gen', 'Theta_gen', 'Phi_gen'] + \
+              [f'X_gen_{i}' for i in range(1, 5)] + [f'Y_gen_{i}' for i in range(1, 5)] + \
+              ['X_fit', 'Y_fit', 'Theta_fit', 'Phi_fit'] + \
+              [f'X_fit_{i}' for i in range(1, 5)] + [f'Y_fit_{i}' for i in range(1, 5)]
+    return pd.DataFrame(np.nan, index=np.arange(n_tracks), columns=columns)
+
+# -----------------------------------------------------------------------------------------------
+# Step 2: Track Generation ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def generate_tracks(n_tracks, cos_n=2):
+    """Generate (X, Y, Theta, Phi) for cosmic ray tracks."""
+    rng = np.random.default_rng()
+    exponent = 1 / (cos_n + 1)
+    X = rng.uniform(-300, 300, n_tracks)
+    Y = rng.uniform(-300, 300, n_tracks)
+    phi = rng.uniform(-np.pi, np.pi, n_tracks)
+    theta = np.arccos(rng.random(n_tracks) ** exponent)
+    return X, Y, theta, phi
+
+# -----------------------------------------------------------------------------------------------
+# Step 3: Intersection Calculation --------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def calculate_intersections(df, z_positions):
+    """Calculate intersections of generated tracks with detector layers."""
+    for i, z in enumerate(z_positions, start=1):
+        df[f'X_gen_{i}'] = df['X_gen'] + z * np.tan(df['Theta_gen']) * np.cos(df['Phi_gen'])
+        df[f'Y_gen_{i}'] = df['Y_gen'] + z * np.tan(df['Theta_gen']) * np.sin(df['Phi_gen'])
+        out_of_bounds = (df[f'X_gen_{i}'] < -150) | (df[f'X_gen_{i}'] > 150) | \
+                        (df[f'Y_gen_{i}'] < -143.5) | (df[f'Y_gen_{i}'] > 143.5)
+        df.loc[out_of_bounds, [f'X_gen_{i}', f'Y_gen_{i}']] = np.nan
+
+# -----------------------------------------------------------------------------------------------
+# Step 4: Measurement Simulation ----------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def simulate_measured_points(df, y_widths, x_noise=5, uniform_choice=True):
+    """Simulate measured points with noise and strip constraints."""
+    for i in range(1, 5):
+        df[f'X_mea_{i}'] = df[f'X_gen_{i}'] + np.random.normal(0, x_noise, len(df))
+        for idx, y_gen in df[f'Y_gen_{i}'].items():
+            if np.isnan(y_gen):
+                continue
+            y_width = y_widths[0] if i in [1, 3] else y_widths[1]
+            y_positions = np.cumsum(y_width) - (np.sum(y_width) + y_width) / 2
+            strip_index = np.argmin(np.abs(y_positions - y_gen))
+            strip_center = y_positions[strip_index]
+            if uniform_choice:
+                df.at[idx, f'Y_mea_{i}'] = np.random.uniform(
+                    strip_center - y_width[strip_index] / 2, 
+                    strip_center + y_width[strip_index] / 2
+                )
+            else:
+                df.at[idx, f'Y_mea_{i}'] = strip_center
+
+# -----------------------------------------------------------------------------------------------
+# Step 5: Track Fitting -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def fit_tracks(df):
+    """Fit a straight line to the measured points using least squares."""
+    z_positions = np.array([0, 150, 310, 345.5])
+    df_clean = df.copy()
+    for idx in tqdm(df_clean.index, desc="Fitting tracks"):
+        x_measured = df_clean.loc[idx, [f'X_mea_{i}' for i in range(1, 5)]].values
+        y_measured = df_clean.loc[idx, [f'Y_mea_{i}' for i in range(1, 5)]].values
+        if np.isnan(x_measured).any() or np.isnan(y_measured).any():
+            continue
+        try:
+            popt_x, _ = curve_fit(lambda z, a, b: a * z + b, z_positions, x_measured)
+            popt_y, _ = curve_fit(lambda z, c, d: c * z + d, z_positions, y_measured)
+            slope_x, intercept_x = popt_x
+            slope_y, intercept_y = popt_y
+            df_clean.at[idx, 'X_fit'], df_clean.at[idx, 'Y_fit'] = intercept_x, intercept_y
+            df_clean.at[idx, 'Theta_fit'] = np.arctan(np.sqrt(slope_x ** 2 + slope_y ** 2))
+            df_clean.at[idx, 'Phi_fit'] = np.arctan2(slope_y, slope_x)
+            for i, z in enumerate(z_positions, start=1):
+                df_clean.at[idx, f'X_fit_{i}'] = slope_x * z + intercept_x
+                df_clean.at[idx, f'Y_fit_{i}'] = slope_y * z + intercept_y
+        except RuntimeError:
+            continue
+    return df_clean
+
+# -----------------------------------------------------------------------------------------------
+# Step 6: Timestamp Generation -------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+def generate_datetime_column(df, base_time, avg_events_per_second):
+    """Adds a 'time' column with datetime values based on a Poisson distribution."""
+    time_column = []
+    current_time = base_time
+    while len(time_column) < len(df):
+        n_events = poisson.rvs(avg_events_per_second)
+        for _ in range(n_events):
+            time_column.append(current_time)
+            if len(time_column) >= len(df):
+                break
+        current_time += timedelta(seconds=1)
+    df['time'] = time_column[:len(df)]
+
+# -----------------------------------------------------------------------------------------------
+# Main Script Execution -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    # Initialize DataFrame
+    df = initialize_dataframe(N_TRACKS)
+
+    # Generate tracks and populate DataFrame
+    df['X_gen'], df['Y_gen'], df['Theta_gen'], df['Phi_gen'] = generate_tracks(N_TRACKS)
+
+    # Calculate intersections and simulate measured points
+    calculate_intersections(df, Z_POSITIONS)
+    simulate_measured_points(df, Y_WIDTHS)
+
+    # Fit tracks and generate datetime column
+    df = fit_tracks(df)
+    generate_datetime_column(df, base_time=BASE_TIME, avg_events_per_second=AVG_EVENTS_PER_SECOND)
+
+    # Select specific columns and format for final output
+    df_final = df[['time', 'Theta_gen', 'Phi_gen', 'Theta_fit', 'Phi_fit', 'X_gen_1', 'X_gen_2', 'X_gen_3', 'X_gen_4']].copy()
+    df_final['true_type'] = [[] for _ in range(len(df_final))]
+    for idx, row in df_final.iterrows():
+        df_final.at[idx, 'true_type'] = ''.join([str(i) for i in range(1, 5) if not pd.isna(row[f'X_gen_{i}'])])
+    df_final.dropna(inplace=True)
+
+    # Display for verification (optional)
+    print(df_final.head())

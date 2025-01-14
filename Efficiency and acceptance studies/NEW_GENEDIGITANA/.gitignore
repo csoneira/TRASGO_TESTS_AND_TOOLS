@@ -1,0 +1,20 @@
+# Ignore text files
+*.txt
+
+# Ignore data files
+*.dat
+*.csv
+
+# Ignore image files
+*.png
+*.jpg
+*.jpeg
+
+# Ignore PDF files
+*.pdf
+
+# Ignore log files
+*.log
+
+# Ignore tar files
+*.tar*

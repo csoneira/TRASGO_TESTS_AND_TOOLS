@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun 12 14:24:04 2024
+
+@author: gfn
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define the function for G.S.θ based on the given formula
+def geometrical_sensitivity(theta, alpha1):
+    term1 = np.pi / 4 - alpha1
+    term2 = (np.tan(theta)**2 / 4) * (1 - 2 * np.sin(alpha1)**2)
+    term3 = np.tan(theta) * (np.sin(alpha1) - np.cos(alpha1))
+    GS_theta = np.sin(theta) * np.cos(theta) * (term1 + term2 + term3)
+    return GS_theta
+
+# Define theta and alpha1 ranges
+theta_values = np.linspace(0, np.pi/2 - 0.6, 500)
+alpha1 = np.linspace(0, np.pi/2, 500)
+
+# Calculate G.S.θ for a fixed alpha1 (example: alpha1 = pi/6)
+alpha1_fixed = np.pi / 6
+GS_theta_values = geometrical_sensitivity(theta_values, alpha1_fixed)
+
+
+
+
+
+
+
+# Simulation parameters
+simulation_length = int(1e5)
+L_x = 300  # length in x-dimension of the planes in mm
+L_y = 300  # length in y-dimension of the planes in mm
+L_z = 300  # distance between the planes in mm
+
+# Initialize counters
+hit = 0
+hittheta = np.zeros(simulation_length)
+
+# Simulation loop
+for i in range(simulation_length):
+    x = np.random.rand() * L_x - L_x / 2
+    y = np.random.rand() * L_y - L_y / 2
+    theta = np.arccos(np.random.rand() * 2 - 1)
+    phi = np.random.rand() * 2 * np.pi
+    dx = np.sin(theta) * np.cos(phi)
+    dy = np.sin(theta) * np.sin(phi)
+    dz = np.cos(theta)
+    
+    x_0 = x + L_z * dx / dz
+    y_0 = y + L_z * dy / dz
+    
+    if (-L_x / 2 < x_0 < L_x / 2) and (-L_y / 2 < y_0 < L_y / 2):
+        hit += 1
+        hittheta[hit-1] = theta
+
+# Only consider up to the number of hits
+hittheta = hittheta[:hit]
+
+# Define the bins for theta
+number_of_bins = 100
+theta_bins = np.linspace(0, np.pi/2, number_of_bins + 1)
+
+# Histogram the theta values of hits
+N_theta, _ = np.histogram(hittheta, bins=theta_bins)
+
+# Normalize the histogram
+N_theta_normalized = N_theta / np.max(N_theta)
+
+
+
+# Plot the results
+plt.figure(figsize=(12, 6))
+
+y = GS_theta_values / np.max(GS_theta_values)
+plt.plot(theta_values, y, label=r'Geometrical Sensitivity (Formula)')
+plt.plot(theta_values, y * np.cos(theta_values)**2.2, label=r'Adjusted Formula')
+plt.hist(hittheta, bins=theta_bins, weights=np.ones_like(hittheta) / len(theta_bins), alpha=0.5, label='Simulation')
+
+plt.xlabel(r'$\theta$ (radians)')
+plt.ylabel('Normalized Counts')
+plt.title(r'Comparison of Geometrical Sensitivity G.S.$\theta$')
+plt.legend()
+plt.grid(True)
+plt.show()

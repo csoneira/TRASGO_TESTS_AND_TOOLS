@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Sep 16 15:47:18 2024
+
+@author: gfn
+"""
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import sys
+import os
+import builtins
+
+file_path_input = 'list_events_2024.09.16_10.49.48.txt'
+
+list_events = pd.read_csv(file_path_input, sep=' ')
+df = list_events
+
+# Data selecting --------------------------------------------------------------
+df_selected = df[['datetime', 'x', 'y', 't0', 's', 'theta', 'phi', 'type', 'True_type',
+                  'Q_event', 'Q_1', 'Q_2', 'Q_3', 'Q_4',
+                  'nstrips_1', 'nstrips_2', 'nstrips_3', 'nstrips_4']].rename(columns={'datetime': 'time'})
+
+
+dp = df_selected
+
+
+def plot_histogram(df, column, xlim=None, ylim=None, bins='auto'):
+    plt.figure(figsize=(8,6))
+    plt.hist(df[column], bins=bins, alpha = 0.7)
+    plt.xlabel(column)
+    plt.ylabel('Frequency')
+
+    if xlim:
+        plt.xlim(xlim)
+    if ylim:
+        plt.ylim(ylim)
+    
+    plt.title(f'Histogram of {column}')
+    plt.grid(True)
+    plt.show()
+
+# Example usage:
+plot_histogram(dp, 'Q_event', xlim=(0, 1000))
+
+
+plot_histogram(dp, 'theta', xlim=(0, 3))
+
+
+plot_histogram(dp, 's', xlim=(0, 1))
+
+
+
+filtered_df = dp.loc[(dp['type'] == 1234) & (dp['s'] > 0.001)].copy()
+filtered_df.loc[:, 'speed'] = (1 / filtered_df['s']) / 300
+plot_histogram(filtered_df, 'speed', xlim = (0, 1))
+
+
+
+
+
+
+plt.figure(figsize=(8,6))
+plt.scatter(filtered_df['s'], filtered_df['Q_event'], alpha=0.7)
+plt.xlabel('s')
+plt.ylabel('Q_event')
+plt.title('Scatter Plot of s vs Q_event')
+plt.grid(True)
+plt.show()
+
+
+
+
+
+
+
+
+
+plt.figure(figsize=(8,6))
+plt.hist2d(filtered_df['s'], filtered_df['Q_event'], bins=50, cmap='viridis')
+plt.colorbar(label='Counts')
+plt.xlabel('s')
+plt.ylabel('Q_event')
+plt.title('2D Histogram of s vs Q_event')
+plt.grid(True)
+plt.show()
+
+
+
+
+
+def plot_2d_histogram(df, x_col, y_col, xlim=None, ylim=None, bins=70):
+    plt.figure(figsize=(8,6))
+    plt.hist2d(df[x_col], df[y_col], bins=bins, cmap='viridis')
+    plt.colorbar(label='Counts')
+    plt.xlabel(x_col)
+    plt.ylabel(y_col)
+    
+    if xlim:
+        plt.xlim(xlim)
+    if ylim:
+        plt.ylim(ylim)
+
+    plt.title(f'2D Histogram of {x_col} vs {y_col}')
+    plt.grid(True)
+    plt.show()
+
+
+# Call the function to plot the 2D histogram
+plot_2d_histogram(filtered_df, 's', 'Q_event', xlim=(0, 0.3), ylim=(20, 400))

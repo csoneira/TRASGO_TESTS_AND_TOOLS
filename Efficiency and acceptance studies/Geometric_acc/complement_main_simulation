@@ -1,0 +1,146 @@
+# main_simulation.py --> to complement the main_simulation.py
+
+
+
+
+
+
+
+
+
+
+# Two plane test --------------------------------------------------------------
+zenith_plot = []
+eff_base = 0.95
+with open("results_two_planes.csv", 'a') as f:
+    # Write the header
+    f.write("theta,phi,total_lines,M1,M2,M1-M2\n")
+    
+    total_points = len(zenith)
+    current_point = 0
+    
+    for theta, phi in zip(zenith, azimuth):
+        current_point += 1
+        progress = current_point / total_points * 100
+        print(f"\rProgress: {progress:.2f}%", end='')
+        
+        # Initialize counts for each (X, Y) point
+        results_dict = {
+            'total_lines': 0,
+            'M1': 0,
+            'M2': 0,
+            'M1-M2': 0
+        }
+        
+        # Efficiency modification based on theta
+        eff_mod = (eff_base - 0.8) / (np.pi / 2) * theta + 0.8
+        
+        for x0 in x_points:
+            for y0 in y_points:
+                
+                results_dict['total_lines'] += 1
+
+                # Calculate the trajectory of the particle
+                tan_theta = np.tan(theta)
+                x = x0 + z_positions * tan_theta * np.cos(phi)
+                y = y0 + z_positions * tan_theta * np.sin(phi)
+                
+                hits = [is_inside_rpc_test(x[i], y[i], eff_mod) for i in range(2)]  # Check for two planes
+                
+                # Debug prints
+                # print(f"Theta: {theta}, Phi: {phi}, X: {x}, Y: {y}, Hits: {hits}, Efficiency: {eff_mod}")
+
+                # Count the hits for each combination
+                if hits[0]:
+                    results_dict['M1'] += 1
+                if hits[1]:
+                    results_dict['M2'] += 1
+                
+                if hits[0] and hits[1]:
+                    results_dict['M1-M2'] += 1
+                    zenith_plot.append(theta)
+        
+        # Write results to the file in CSV format for each (X, Y) point
+        f.write(f"{theta},{phi},{results_dict['total_lines']},{results_dict['M1']},{results_dict['M2']},{results_dict['M1-M2']}\n")
+
+print("\nResults saved to results_two_planes.csv")
+
+# Check the distribution of generated theta values
+plt.hist(zenith_plot, bins=50, density=True)
+plt.xlabel('Theta')
+plt.ylabel('Density')
+plt.title('Detected Theta Distribution')
+plt.show()
+
+a = 1/0
+
+
+
+# Read the CSV file
+df = pd.read_csv('results_two_planes.csv')
+
+# Convert theta and phi to numeric values
+df['theta'] = pd.to_numeric(df['theta'], errors='coerce')
+df['phi'] = pd.to_numeric(df['phi'], errors='coerce')
+
+# Convert other columns to numeric values
+for col in ['M1', 'M2', 'M1-M2', 'total_lines']:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+# Drop rows with NaN values in theta, phi, or any numerical columns
+df = df.dropna(subset=['theta', 'phi', 'M1', 'M2', 'M1-M2', 'total_lines'])
+
+# Columns to combine for M1-M2
+columns_to_combine = ['M1-M2']
+
+# Numerical columns including total_lines
+numerical_columns = ['M1', 'M2', 'M1-M2', 'total_lines']
+
+# Ensure that theta values are correctly binned and averaged
+num_bins_theta = 100
+df['theta_bin'] = pd.cut(df['theta'], bins=num_bins_theta)
+theta_sum = df.groupby('theta_bin')[numerical_columns].sum().reset_index()
+
+# Calculate the mid-point for each theta bin
+theta_sum['theta_mid'] = theta_sum['theta_bin'].apply(lambda x: x.mid)
+theta_sum['theta_mid'] = theta_sum['theta_mid'].astype(float)
+
+# Plotting
+result_df = pd.DataFrame()
+fig, axs = plt.subplots(1, 1, figsize=(7, 5))
+
+for combination in columns_to_combine:
+    # Calculate average for theta bins
+    theta_avg = df.groupby('theta_bin')[combination].mean().reset_index()
+    theta_avg['theta_mid'] = theta_avg['theta_bin'].apply(lambda x: x.mid)
+    theta_avg['theta_mid'] = theta_avg['theta_mid'].astype(float)
+
+    # Plotting for each combination
+    axs.plot(theta_sum['theta_mid'] * 180/np.pi, theta_sum[combination], marker='.', label='Sum')
+    axs.plot(theta_avg['theta_mid'] * 180 / np.pi, theta_avg[combination], marker='.', c="r", label='Avg')
+    axs.set_xlabel('Theta / º')
+    axs.set_ylabel(f'Quotient {combination}')
+    axs.set_title(f'{combination} acceptance')
+    axs.grid(True)
+    axs.legend()
+
+    result_df[f'theta_mid_{combination}'] = theta_avg['theta_mid']
+    result_df[f'quotient_avg_{combination}'] = theta_avg[combination]
+
+# Calculate average for total_lines for theta bins
+theta_avg_total_lines = df.groupby('theta_bin')['total_lines'].mean().reset_index()
+theta_avg_total_lines['theta_mid'] = theta_avg_total_lines['theta_bin'].apply(lambda x: x.mid)
+theta_avg_total_lines['theta_mid'] = theta_avg_total_lines['theta_mid'].astype(float)
+
+result_df['theta_mid'] = theta_avg_total_lines['theta_mid']
+result_df['quotient_avg'] = theta_avg_total_lines['total_lines']
+
+# Save the result to CSV
+result_df.to_csv('zenith_acceptance_two_planes.csv', index=False)
+
+# Adjust the layout and show the plot
+plt.tight_layout()
+plt.show()
+
+# -------------------------------------------------------
+
