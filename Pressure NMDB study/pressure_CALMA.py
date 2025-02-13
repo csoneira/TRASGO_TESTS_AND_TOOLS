@@ -13,7 +13,7 @@ beta_min = -0.02 # -8
 
 start = 1
 end = 52
-step = 1
+step = 10
 time_windows = list(range(start, end, step))  # Weeks
 
 # Create a suffix with the time windows start, end and step to add to the saving files
@@ -24,7 +24,7 @@ print(f"Time windows suffix: {time_windows_suffix}")
 # load_filename = f'filtered_data_{time_windows_suffix}.csv'
 load_filename = 'filtered_data_1_52_1.csv'
 
-reload_data = True
+reload_data = False
 linear_fit_condition = True
 regression_plots = False  # Set to True to display individual regression plots for debugging
 
