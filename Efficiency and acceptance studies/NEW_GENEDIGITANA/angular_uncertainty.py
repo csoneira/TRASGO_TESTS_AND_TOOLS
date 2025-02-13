@@ -1,10 +1,13 @@
+#%%
+
 import pandas as pd
 import numpy as np
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
+article_format = True
 relative_error = True
-article_size = True
 
 phi_unc_threshold = 10  # Set this to the desired threshold value
 clip_value = 10
@@ -61,20 +64,28 @@ def plot_uncertainties(theta_grid, phi_grid, theta_std_grid, phi_std_grid, clip_
     phi_std_grid = np.clip(phi_std_grid, None, clip_value)
     
     # Set up the figure and axes
-    if article_size:
-        v = (10,5)
+    if article_format:
+        v = (7,4)
     else:
         v = (14,6)
+        
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'}, figsize=v)
-    
-    
+
+    turbo_cmap = cm.get_cmap("turbo")
+    darkest_color = turbo_cmap(0)  # The lowest value in the Turbo colormap
+
+    # Set background color to the darkest Turbo value
+    ax1.set_facecolor(darkest_color)
+    ax2.set_facecolor(darkest_color)
+
     # --------------------------------------------------------------------------
     # Define the levels for smooth gradient
     if relative_error:
         # Compute relative errors
         theta_contour_values = theta_std_grid / 180 * 100 # For theta, relative to 90º
         phi_contour_values = phi_std_grid / 360 * 100    # For phi, relative to 360º
-        cbar_label = 'Relative Uncertainty / %'
+        # cbar_label = 'Relative Uncertainty / %'
+        cbar_label = '$\delta$ (%)'
         levels = np.linspace(0, 3.5, number_of_levels)
     else:
         # Use absolute errors
@@ -87,27 +98,24 @@ def plot_uncertainties(theta_grid, phi_grid, theta_std_grid, phi_std_grid, clip_
     # Plot theta (zenith) uncertainty
     c1 = ax1.contourf(phi_grid, theta_grid_deg, theta_contour_values, levels=levels, cmap=colormap_selection)
     # ax1.set_xlabel('Azimuth (º)', labelpad=10)
-    ax1.set_title('Zenith Uncertainty' + (' (Relative / %)' if relative_error else ' (º)'))
-
+    
     # Plot phi (azimuth) uncertainty
     c2 = ax2.contourf(phi_grid, theta_grid_deg, phi_contour_values, levels=levels, cmap=colormap_selection)
     # ax2.set_xlabel('Azimuth (º)', labelpad=10)
-    ax2.set_title('Azimuth Uncertainty' + (' (Relative / %)' if relative_error else ' (º)'))
-
-    # Add a single colorbar on the right side, centrally aligned
-    cbar = fig.colorbar(c2, ax=[ax1, ax2], orientation='vertical', fraction=0.05, pad=0.1)
-    cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
-    cbar.ax.tick_params(labelsize=10, pad=10)
-    cbar.set_label(cbar_label, fontsize=12, labelpad=15)
+    
+    if article_format == False:
+        ax1.set_title('Zenith Uncertainty' + (' (Relative / %)' if relative_error else ' (º)'))
+        ax2.set_title('Azimuth Uncertainty' + (' (Relative / %)' if relative_error else ' (º)'))
+        
     # --------------------------------------------------------------------------
     
-    
     # Define radial ticks and their labels
+    outer_tick_angle = 50
     radial_ticks = {
-        'ax1': [0, 30, 45],
-        'ax1_labels': ['0º', '30º', '45º'],
-        'ax2': [0, 30, 45],
-        'ax2_labels': ['0º', '30º', '45º']
+        'ax1': [10, 30, outer_tick_angle],
+        'ax1_labels': ['10º', '30º', f'{outer_tick_angle}º'],
+        'ax2': [10, 30, outer_tick_angle],
+        'ax2_labels': ['10º', '30º', f'{outer_tick_angle}º']
     }
 
     # Apply radial ticks and labels
@@ -115,10 +123,22 @@ def plot_uncertainties(theta_grid, phi_grid, theta_std_grid, phi_std_grid, clip_
     ax1.set_yticklabels(radial_ticks['ax1_labels'])
     ax2.set_yticks(radial_ticks['ax2'])
     ax2.set_yticklabels(radial_ticks['ax2_labels'])
-
-    # plt.tight_layout()
+    
+    
+    plt.tight_layout()
+    
+    # Add a single colorbar on the right side, centrally aligned
+    cbar = fig.colorbar(c2, ax=[ax1, ax2], orientation='vertical', fraction=0.02, pad=0.08)
+    cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
+    cbar.ax.tick_params(labelsize=10, pad=8)
+    cbar.set_label(cbar_label, fontsize=12, labelpad=13)
+    
     plt.savefig('uncertainty_plot.png', dpi=300, bbox_inches='tight')
     plt.show()
+
+
+
+
 
 
 
@@ -143,3 +163,5 @@ theta_uncertainty, phi_uncertainty = get_uncertainties(theta_value, phi_value, t
 print(f"Uncertainty at (theta={theta_value}, phi={phi_value}):")
 print(f"Theta uncertainty: {theta_uncertainty}")
 print(f"Phi uncertainty: {phi_uncertainty}")
+
+# %%
